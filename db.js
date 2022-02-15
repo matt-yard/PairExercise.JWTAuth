@@ -1,7 +1,8 @@
-const Sequelize = require("sequelize");
+const { Sequelize, DataTypes, Model } = require("sequelize");
 const jwt = require("jsonwebtoken");
+const bcrypt = require("bcrypt");
 
-const { STRING } = Sequelize;
+// const { STRING } = Sequelize;
 const config = {
   logging: false,
 };
@@ -15,14 +16,14 @@ const conn = new Sequelize(
 );
 
 const User = conn.define("user", {
-  username: STRING,
-  password: STRING,
+  username: DataTypes.STRING,
+  password: DataTypes.STRING,
 });
 
 User.byToken = async (token) => {
   try {
     const { userId } = jwt.verify(token, process.env.SECRET_KEY);
-    const user = await User.findByPk(userId);
+    const user = await User.findByPk(userId, { include: Note });
     if (user) {
       return user;
     }
@@ -40,12 +41,13 @@ User.authenticate = async ({ username, password }) => {
   const user = await User.findOne({
     where: {
       username,
-      password,
     },
   });
-  if (user) {
+
+  const match = bcrypt.compare(password, user.password);
+
+  if (match) {
     const token = jwt.sign({ userId: user.id }, process.env.SECRET_KEY);
-    console.log(token);
     return token;
   }
   const error = Error("bad credentials");
@@ -63,6 +65,20 @@ const syncAndSeed = async () => {
   const [lucy, moe, larry] = await Promise.all(
     credentials.map((credential) => User.create(credential))
   );
+  const notes = [
+    { text: "hello world" },
+    { text: "my note" },
+    { text: "buy groceries" },
+  ];
+
+  const [note1, note2, note3] = await Promise.all(
+    notes.map((note) => Note.create(note))
+  );
+
+  await note1.setUser(lucy);
+  await note2.setUser(moe);
+  await note3.setUser(larry);
+
   return {
     users: {
       lucy,
@@ -72,9 +88,25 @@ const syncAndSeed = async () => {
   };
 };
 
+User.beforeCreate(async (user, options) => {
+  const hashedPw = await bcrypt.hash(user.password, 3);
+  user.password = hashedPw;
+});
+
+//Notes model
+const Note = conn.define("note", {
+  text: {
+    type: DataTypes.TEXT,
+  },
+});
+
+User.hasMany(Note);
+Note.belongsTo(User);
+
 module.exports = {
   syncAndSeed,
   models: {
     User,
+    Note,
   },
 };
