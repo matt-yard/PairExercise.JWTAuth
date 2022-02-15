@@ -3,6 +3,7 @@ const app = require("./app");
 
 const init = async () => {
   await syncAndSeed();
+  // console.log(process.env);
   const port = process.env.PORT || 8080;
   app.listen(port, () => console.log(`listening on port ${port}`));
 };
